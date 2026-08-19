@@ -62,3 +62,23 @@ async def generate_psychoanalysis(
     if not text:
         raise ValueError("Empty response from Gemini")
     return text
+
+
+async def generate_rissa(name1: str, name2: str, system_instruction: str) -> str:
+    prompt = (
+        f"Genera una scazzottata immaginaria, inventata di sana pianta, tra {name1} e {name2}. "
+        f"Scrivi mosse fisiche alternate a righe nel formato \"Nome: mossa\", cominciando da {name1}, "
+        f"per un totale di 6-8 righe (3-4 mosse a testa), seguite da un'ultima riga che dichiara il vincitore "
+        f"tra {name1} e {name2}, oppure un pareggio. Ogni riga deve essere una sola frase corta e diretta."
+    )
+
+    response = await _client.aio.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=[{"role": "user", "parts": [{"text": prompt}]}],
+        config=types.GenerateContentConfig(system_instruction=system_instruction),
+    )
+    text = getattr(response, "text", None)
+    if not text:
+        raise ValueError("Empty response from Gemini")
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return "\n\n".join(lines)

@@ -11,12 +11,13 @@ from telegram.ext import (
     filters,
 )
 
-from bot.gemini_client import generate_psychoanalysis, generate_reply
+from bot.gemini_client import generate_psychoanalysis, generate_reply, generate_rissa
 from bot.history import append_message, get_history
 from bot.mentions import is_addressed_to_bot
 from bot.personalities import (
     PERSONALITIES,
     PSYCHOANALYST_INSTRUCTION,
+    RISSA_INSTRUCTION,
     get_active_personality,
     set_active_personality,
 )
@@ -114,6 +115,61 @@ async def psicoanalizza_command(update: Update, context: ContextTypes.DEFAULT_TY
     await message.reply_text(analysis)
 
 
+def _resolve_mention(history, raw: str) -> tuple[str, str | int]:
+    """Risolve un '@nick' passato come argomento a un nome visualizzato + identità univoca."""
+    username = raw.lstrip("@").lower()
+    match = next((msg for msg in history if msg.username and msg.username.lower() == username), None)
+    if match:
+        return match.sender_name, match.user_id
+    return f"@{username}", f"@{username}"
+
+
+def _resolve_user(user) -> tuple[str, str | int]:
+    name = user.first_name if user and user.first_name else "Anonimo"
+    identity: str | int = user.id if user else name
+    return name, identity
+
+
+async def rissa_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    chat_id = update.effective_chat.id
+    history = get_history(chat_id)
+    args = context.args or []
+
+    if len(args) >= 2:
+        name1, id1 = _resolve_mention(history, args[0])
+        name2, id2 = _resolve_mention(history, args[1])
+    elif len(args) == 1:
+        if message.reply_to_message and message.reply_to_message.from_user:
+            name1, id1 = _resolve_user(message.reply_to_message.from_user)
+        else:
+            name1, id1 = _resolve_user(message.from_user)
+        name2, id2 = _resolve_mention(history, args[0])
+    else:
+        await message.reply_text(
+            "Dimmi almeno con chi deve litigare, tipo /rissa @tizio o /rissa @tizio @caio."
+        )
+        return
+
+    if id1 == id2:
+        await message.reply_text("Vuoi farlo litigare da solo? Trovati un nemico vero.")
+        return
+
+    try:
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+    except Exception:
+        logger.debug("Could not send typing action", exc_info=True)
+
+    try:
+        rissa_text = await generate_rissa(name1, name2, RISSA_INSTRUCTION)
+    except (genai_errors.APIError, ValueError):
+        logger.exception("Gemini rissa call failed")
+        await message.reply_text("Aspetta che sto cagando. Riprova tra poco.")
+        return
+
+    await message.reply_text(rissa_text)
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
     chat = update.effective_chat
@@ -166,5 +222,6 @@ def register_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("persona", persona_command))
     application.add_handler(CommandHandler("psicoanalizza", psicoanalizza_command))
+    application.add_handler(CommandHandler("rissa", rissa_command))
     application.add_handler(CallbackQueryHandler(persona_callback, pattern=r"^persona:"))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
