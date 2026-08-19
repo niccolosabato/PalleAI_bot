@@ -60,26 +60,37 @@ async def persona_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 async def psicoanalizza_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not context.args:
-        await update.message.reply_text(
-            "Dimmi anche chi cazzo devo psicoanalizzare, tipo /psicoanalizza Marco."
-        )
-        return
-
-    target_name = " ".join(context.args)
+    message = update.effective_message
     chat_id = update.effective_chat.id
     history = get_history(chat_id)
 
-    target_lower = target_name.lower()
-    messages = [text for name, text in history if name.lower() == target_lower]
-    if not messages:
-        messages = [text for name, text in history if target_lower in name.lower()]
+    target_user_id: int | None = None
 
-    if not messages:
-        await update.message.reply_text(
-            f"Non ho niente su '{target_name}' nella chat, non ha mai aperto bocca qui."
+    if context.args:
+        # Argomento esplicito: si intende come username Telegram, non il nome visualizzato.
+        username_query = " ".join(context.args).lstrip("@").lower()
+        target_name = f"@{username_query}"
+        match = next(
+            (msg for msg in history if msg.username and msg.username.lower() == username_query),
+            None,
         )
-        return
+        if match:
+            target_user_id = match.user_id
+            target_name = match.sender_name
+    elif message.reply_to_message and message.reply_to_message.from_user:
+        target_user = message.reply_to_message.from_user
+        target_user_id = target_user.id
+        target_name = target_user.first_name or "Anonimo"
+    else:
+        target_user = message.from_user
+        target_user_id = target_user.id if target_user else None
+        target_name = target_user.first_name if target_user and target_user.first_name else "Anonimo"
+
+    messages = (
+        [msg.text for msg in history if msg.user_id == target_user_id]
+        if target_user_id is not None
+        else []
+    )
 
     try:
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
@@ -94,10 +105,10 @@ async def psicoanalizza_command(update: Update, context: ContextTypes.DEFAULT_TY
         )
     except (genai_errors.APIError, ValueError):
         logger.exception("Gemini psychoanalysis call failed")
-        await update.message.reply_text("Aspetta che sto cagando. Riprova tra poco.")
+        await message.reply_text("Aspetta che sto cagando. Riprova tra poco.")
         return
 
-    await update.message.reply_text(analysis)
+    await message.reply_text(analysis)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -108,6 +119,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     sender = message.from_user
     sender_name = (sender.first_name if sender and sender.first_name else "Anonimo")
+    sender_username = sender.username if sender else None
+    sender_id = sender.id if sender else 0
 
     chat_id = chat.id
     should_respond = chat.type == "private" or is_addressed_to_bot(
@@ -115,7 +128,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
     if not should_respond:
-        append_message(chat_id, sender_name, message.text)
+        append_message(chat_id, sender_name, sender_username, sender_id, message.text)
         return
 
     history = list(get_history(chat_id))
@@ -131,12 +144,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         reply_text = await generate_reply(history, sender_name, message.text, system_instruction)
     except (genai_errors.APIError, ValueError):
         logger.exception("Gemini call failed")
-        append_message(chat_id, sender_name, message.text)
+        append_message(chat_id, sender_name, sender_username, sender_id, message.text)
         await message.reply_text("Aspetta che sto cagando. Riprova tra poco.")
         return
 
-    append_message(chat_id, sender_name, message.text)
-    append_message(chat_id, "Bot", reply_text)
+    append_message(chat_id, sender_name, sender_username, sender_id, message.text)
+    append_message(chat_id, "Bot", context.bot.username, context.bot.id, reply_text)
 
     try:
         await message.reply_text(reply_text)
