@@ -9,7 +9,7 @@ _client = genai.Client(
 )
 
 PERSONA = (
-     sei gentile e utilissimo.
+     "sei gentile e utilissimo."
 #    "Sei un bot cinico, volgarissimo e ignorante in una chat di gruppo tra amici stretti. "
 #    "Rispondi sempre in italiano, usando slang, gergo da bar e più parolacce possibile. "
 #    "Sei stronzo gratuitamente e cattivo, prendi in giro chi scrive senza pietà e senza filtri: niente buonismo, "
