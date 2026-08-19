@@ -14,7 +14,12 @@ from telegram.ext import (
 from bot.gemini_client import generate_psychoanalysis, generate_reply
 from bot.history import append_message, get_history
 from bot.mentions import is_addressed_to_bot
-from bot.personalities import PERSONALITIES, get_active_personality, set_active_personality
+from bot.personalities import (
+    PERSONALITIES,
+    PSYCHOANALYST_INSTRUCTION,
+    get_active_personality,
+    set_active_personality,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -97,11 +102,9 @@ async def psicoanalizza_command(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception:
         logger.debug("Could not send typing action", exc_info=True)
 
-    personality = PERSONALITIES[get_active_personality(chat_id)]
-
     try:
         analysis = await generate_psychoanalysis(
-            target_name, messages, personality.base_instruction
+            target_name, messages, PSYCHOANALYST_INSTRUCTION
         )
     except (genai_errors.APIError, ValueError):
         logger.exception("Gemini psychoanalysis call failed")

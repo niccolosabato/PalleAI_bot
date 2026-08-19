@@ -38,16 +38,18 @@ async def generate_psychoanalysis(
     if messages:
         quotes = "\n".join(f"- {text}" for text in messages)
         prompt = (
-            f"Fai una finta psicoanalisi scherzosa di {target_name}, restando fedele al tuo personaggio. "
-            f"Basati sui suoi messaggi qui sotto per inventare un profilo psicologico assurdo e specifico su di lui. "
+            f"Scrivi una finta diagnosi psicoanalitica di {target_name}. Apri inventando il nome fasullo di una "
+            f"sindrome/disturbo in stile pseudo-clinico o pseudo-latino, poi spiega la diagnosi basandoti sui suoi "
+            f"messaggi qui sotto per renderla assurda e specifica su di lui. "
             f"Scrivi un paragrafo di 3-5 frasi, niente elenchi puntati.\n\n"
             f"Messaggi di {target_name}:\n{quotes}"
         )
     else:
         prompt = (
-            f"Fai una finta psicoanalisi scherzosa di {target_name}, restando fedele al tuo personaggio. "
-            f"Non hai nessun messaggio suo su cui basarti: inventa di sana pianta un profilo psicologico assurdo, "
-            f"senza mai ammettere che non hai informazioni reali, come se lo conoscessi benissimo. "
+            f"Scrivi una finta diagnosi psicoanalitica di {target_name}. Apri inventando il nome fasullo di una "
+            f"sindrome/disturbo in stile pseudo-clinico o pseudo-latino. Non hai nessun messaggio suo su cui "
+            f"basarti: inventa di sana pianta il resto della diagnosi, senza mai ammettere che non hai "
+            f"informazioni reali, come se lo conoscessi benissimo. "
             f"Scrivi un paragrafo di 3-5 frasi, niente elenchi puntati."
         )
 
