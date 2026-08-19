@@ -1,12 +1,20 @@
 import logging
 
 from google.genai import errors as genai_errors
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
 from bot.gemini_client import generate_reply
 from bot.history import append_message, get_history
 from bot.mentions import is_addressed_to_bot
+from bot.personalities import PERSONALITIES, get_active_personality, set_active_personality
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +30,33 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "Scrivimi un messaggio e ti rispondo, non è difficile.\n"
         "Nei gruppi, taggami o rispondi a un mio messaggio, per la lista di comandi te la prendi in culo."
     )
+
+
+async def persona_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = update.effective_chat.id
+    current = get_active_personality(chat_id)
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                ("✅ " if key == current else "") + personality.display_name,
+                callback_data=f"persona:{key}",
+            )
+        ]
+        for key, personality in PERSONALITIES.items()
+    ]
+    await update.message.reply_text(
+        "Scegli la personalità del bot:", reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def persona_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    key = query.data.split(":", 1)[1]
+    if key not in PERSONALITIES:
+        return
+    set_active_personality(update.effective_chat.id, key)
+    await query.edit_message_text(f"Personalità impostata: {PERSONALITIES[key].display_name}")
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -49,8 +84,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     except Exception:
         logger.debug("Could not send typing action", exc_info=True)
 
+    system_instruction = PERSONALITIES[get_active_personality(chat_id)].instruction
+
     try:
-        reply_text = await generate_reply(history, sender_name, message.text)
+        reply_text = await generate_reply(history, sender_name, message.text, system_instruction)
     except (genai_errors.APIError, ValueError):
         logger.exception("Gemini call failed")
         append_message(chat_id, sender_name, message.text)
@@ -70,4 +107,6 @@ def register_handlers(application: Application) -> None:
     """Single place to add new slash commands / handlers going forward."""
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("persona", persona_command))
+    application.add_handler(CallbackQueryHandler(persona_callback, pattern=r"^persona:"))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
