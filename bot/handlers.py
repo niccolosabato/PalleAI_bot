@@ -11,7 +11,7 @@ from telegram.ext import (
     filters,
 )
 
-from bot.gemini_client import generate_reply
+from bot.gemini_client import generate_psychoanalysis, generate_reply
 from bot.history import append_message, get_history
 from bot.mentions import is_addressed_to_bot
 from bot.personalities import PERSONALITIES, get_active_personality, set_active_personality
@@ -57,6 +57,47 @@ async def persona_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
     set_active_personality(update.effective_chat.id, key)
     await query.edit_message_text(f"Personalità impostata: {PERSONALITIES[key].display_name}")
+
+
+async def psicoanalizza_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args:
+        await update.message.reply_text(
+            "Dimmi anche chi cazzo devo psicoanalizzare, tipo /psicoanalizza Marco."
+        )
+        return
+
+    target_name = " ".join(context.args)
+    chat_id = update.effective_chat.id
+    history = get_history(chat_id)
+
+    target_lower = target_name.lower()
+    messages = [text for name, text in history if name.lower() == target_lower]
+    if not messages:
+        messages = [text for name, text in history if target_lower in name.lower()]
+
+    if not messages:
+        await update.message.reply_text(
+            f"Non ho niente su '{target_name}' nella chat, non ha mai aperto bocca qui."
+        )
+        return
+
+    try:
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+    except Exception:
+        logger.debug("Could not send typing action", exc_info=True)
+
+    personality = PERSONALITIES[get_active_personality(chat_id)]
+
+    try:
+        analysis = await generate_psychoanalysis(
+            target_name, messages, personality.base_instruction
+        )
+    except (genai_errors.APIError, ValueError):
+        logger.exception("Gemini psychoanalysis call failed")
+        await update.message.reply_text("Aspetta che sto cagando. Riprova tra poco.")
+        return
+
+    await update.message.reply_text(analysis)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -108,5 +149,6 @@ def register_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("persona", persona_command))
+    application.add_handler(CommandHandler("psicoanalizza", psicoanalizza_command))
     application.add_handler(CallbackQueryHandler(persona_callback, pattern=r"^persona:"))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

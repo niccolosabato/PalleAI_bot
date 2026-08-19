@@ -27,3 +27,27 @@ async def generate_reply(
     if not text:
         raise ValueError("Empty response from Gemini")
     return text
+
+
+async def generate_psychoanalysis(
+    target_name: str,
+    messages: list[str],
+    system_instruction: str,
+) -> str:
+    quotes = "\n".join(f"- {text}" for text in messages)
+    prompt = (
+        f"Fai una finta psicoanalisi scherzosa di {target_name}, restando fedele al tuo personaggio. "
+        f"Basati sui suoi messaggi qui sotto per inventare un profilo psicologico assurdo e specifico su di lui. "
+        f"Scrivi un paragrafo di 3-5 frasi, niente elenchi puntati.\n\n"
+        f"Messaggi di {target_name}:\n{quotes}"
+    )
+
+    response = await _client.aio.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=[{"role": "user", "parts": [{"text": prompt}]}],
+        config=types.GenerateContentConfig(system_instruction=system_instruction),
+    )
+    text = getattr(response, "text", None)
+    if not text:
+        raise ValueError("Empty response from Gemini")
+    return text
