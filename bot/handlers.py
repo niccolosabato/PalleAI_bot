@@ -13,6 +13,7 @@ from telegram.ext import (
 
 from bot.gemini_client import generate_psychoanalysis, generate_reply, generate_rissa
 from bot.history import append_message, get_history
+from bot.members import find_by_username, record_member
 from bot.mentions import is_addressed_to_bot
 from bot.personalities import (
     PERSONALITIES,
@@ -115,13 +116,17 @@ async def psicoanalizza_command(update: Update, context: ContextTypes.DEFAULT_TY
     await message.reply_text(analysis)
 
 
-def _resolve_mention(history, raw: str) -> tuple[str, str | int]:
-    """Risolve un '@nick' passato come argomento a un nome visualizzato + identità univoca."""
-    username = raw.lstrip("@").lower()
-    match = next((msg for msg in history if msg.username and msg.username.lower() == username), None)
-    if match:
-        return match.sender_name, match.user_id
-    return f"@{username}", f"@{username}"
+def _resolve_mention(chat_id: int, raw: str) -> tuple[str, str | int]:
+    """Risolve un '@nick' passato come argomento a un nome visualizzato + identità univoca.
+
+    Niente '@' nel fallback: un '@nickname' nel testo verrebbe interpretato da Telegram
+    come una mention vera, notificando quella persona.
+    """
+    username = raw.lstrip("@")
+    member = find_by_username(chat_id, username)
+    if member:
+        return member.name, member.user_id
+    return username, username
 
 
 def _resolve_user(user) -> tuple[str, str | int]:
@@ -133,21 +138,25 @@ def _resolve_user(user) -> tuple[str, str | int]:
 async def rissa_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
     chat_id = update.effective_chat.id
-    history = get_history(chat_id)
     args = context.args or []
+    has_reply = bool(message.reply_to_message and message.reply_to_message.from_user)
 
     if len(args) >= 2:
-        name1, id1 = _resolve_mention(history, args[0])
-        name2, id2 = _resolve_mention(history, args[1])
+        name1, id1 = _resolve_mention(chat_id, args[0])
+        name2, id2 = _resolve_mention(chat_id, args[1])
     elif len(args) == 1:
-        if message.reply_to_message and message.reply_to_message.from_user:
+        if has_reply:
             name1, id1 = _resolve_user(message.reply_to_message.from_user)
         else:
             name1, id1 = _resolve_user(message.from_user)
-        name2, id2 = _resolve_mention(history, args[0])
+        name2, id2 = _resolve_mention(chat_id, args[0])
+    elif has_reply:
+        name1, id1 = _resolve_user(message.from_user)
+        name2, id2 = _resolve_user(message.reply_to_message.from_user)
     else:
         await message.reply_text(
-            "Dimmi almeno con chi deve litigare, tipo /rissa @tizio o /rissa @tizio @caio."
+            "Dimmi almeno con chi deve litigare, tipo /rissa @tizio o /rissa @tizio @caio, "
+            "oppure rispondi a un messaggio con /rissa."
         )
         return
 
@@ -182,6 +191,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     sender_id = sender.id if sender else 0
 
     chat_id = chat.id
+    record_member(chat_id, sender_id, sender_name, sender_username)
     should_respond = chat.type == "private" or is_addressed_to_bot(
         message, context.bot.id, context.bot.username
     )
