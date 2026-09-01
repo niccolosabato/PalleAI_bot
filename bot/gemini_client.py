@@ -1,17 +1,16 @@
 from google import genai
 from google.genai import types
 
-from bot.config import (
-    GEMINI_ANSWER_MODEL,
-    GEMINI_ANSWER_TIMEOUT_MS,
-    GEMINI_API_KEY,
-    GEMINI_MODEL,
-)
+from bot.config import GEMINI_API_KEY, GEMINI_MODEL
 from bot.history import ChatMessage
+
+# Timeout massimo per una risposta di Gemini. Tarato su /chiedi, che fa girare la
+# ricerca web lato server ed è la chiamata più lenta.
+_TIMEOUT_MS = 60000
 
 _client = genai.Client(
     api_key=GEMINI_API_KEY,
-    http_options=types.HttpOptions(timeout=20000),
+    http_options=types.HttpOptions(timeout=_TIMEOUT_MS),
 )
 
 async def generate_reply(
@@ -87,12 +86,11 @@ async def generate_answer(
     parts.append(f"Domanda:\n{question}")
 
     response = await _client.aio.models.generate_content(
-        model=GEMINI_ANSWER_MODEL,
+        model=GEMINI_MODEL,
         contents=[{"role": "user", "parts": [{"text": "\n\n".join(parts)}]}],
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
             tools=[types.Tool(google_search=types.GoogleSearch())],
-            http_options=types.HttpOptions(timeout=GEMINI_ANSWER_TIMEOUT_MS),
         ),
     )
     text = _response_text(response)

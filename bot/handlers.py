@@ -78,17 +78,19 @@ async def chiedi_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     history = list(get_history(chat_id))
 
-    try:
-        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-    except Exception:
-        logger.debug("Could not send typing action", exc_info=True)
+    placeholder = await message.reply_text("Aspetta che ci penso, coglione...")
 
     try:
         answer = await generate_answer(question, ASSISTANT_INSTRUCTION, history)
     except Exception as exc:
         logger.exception("Gemini answer call failed: %r", exc)
-        await message.reply_text("Aspetta che sto cagando. Riprova tra poco.")
+        await placeholder.edit_text("Aspetta che sto cagando. Riprova tra poco.")
         return
+
+    try:
+        await placeholder.delete()
+    except Exception:
+        logger.debug("Could not delete placeholder message", exc_info=True)
 
     sender = message.from_user
     sender_name = sender.first_name if sender and sender.first_name else "Anonimo"
