@@ -30,6 +30,52 @@ async def generate_reply(
     return text
 
 
+def _extract_sources(response) -> list[str]:
+    """URL delle fonti citate dal grounding di Gemini, se la ricerca web è stata usata."""
+    try:
+        chunks = response.candidates[0].grounding_metadata.grounding_chunks or []
+    except (AttributeError, IndexError, TypeError):
+        return []
+    urls: list[str] = []
+    for chunk in chunks:
+        uri = getattr(getattr(chunk, "web", None), "uri", None)
+        if uri and uri not in urls:
+            urls.append(uri)
+    return urls[:5]
+
+
+async def generate_answer(
+    question: str,
+    system_instruction: str,
+    history: list[ChatMessage] | None = None,
+) -> str:
+    parts = []
+    if history:
+        context_lines = "\n".join(f"{msg.sender_name}: {msg.text}" for msg in history)
+        parts.append(
+            "Contesto recente della chat (usalo solo se serve a capire la domanda):\n"
+            f"{context_lines}"
+        )
+    parts.append(f"Domanda:\n{question}")
+
+    response = await _client.aio.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=[{"role": "user", "parts": [{"text": "\n\n".join(parts)}]}],
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            tools=[types.Tool(google_search=types.GoogleSearch())],
+        ),
+    )
+    text = getattr(response, "text", None)
+    if not text:
+        raise ValueError("Empty response from Gemini")
+
+    sources = _extract_sources(response)
+    if sources:
+        text += "\n\nFonti:\n" + "\n".join(f"- {url}" for url in sources)
+    return text
+
+
 async def generate_psychoanalysis(
     target_name: str,
     messages: list[str],
