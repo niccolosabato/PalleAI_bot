@@ -85,8 +85,8 @@ async def chiedi_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     try:
         answer = await generate_answer(question, ASSISTANT_INSTRUCTION, history)
-    except (genai_errors.APIError, ValueError):
-        logger.exception("Gemini answer call failed")
+    except Exception as exc:
+        logger.exception("Gemini answer call failed: %r", exc)
         await message.reply_text("Aspetta che sto cagando. Riprova tra poco.")
         return
 

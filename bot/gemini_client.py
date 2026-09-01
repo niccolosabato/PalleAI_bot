@@ -1,7 +1,12 @@
 from google import genai
 from google.genai import types
 
-from bot.config import GEMINI_API_KEY, GEMINI_MODEL
+from bot.config import (
+    GEMINI_ANSWER_MODEL,
+    GEMINI_ANSWER_TIMEOUT_MS,
+    GEMINI_API_KEY,
+    GEMINI_MODEL,
+)
 from bot.history import ChatMessage
 
 _client = genai.Client(
@@ -44,6 +49,29 @@ def _extract_sources(response) -> list[str]:
     return urls[:5]
 
 
+def _response_text(response) -> str:
+    """Testo della risposta, con fallback sui parts. Alza ValueError diagnostico se vuoto."""
+    text = (getattr(response, "text", None) or "").strip()
+    if text:
+        return text
+
+    try:
+        parts = response.candidates[0].content.parts or []
+        text = "".join(getattr(p, "text", "") or "" for p in parts).strip()
+    except (AttributeError, IndexError, TypeError):
+        text = ""
+    if text:
+        return text
+
+    finish = block = None
+    try:
+        finish = getattr(response.candidates[0], "finish_reason", None)
+    except (AttributeError, IndexError, TypeError):
+        pass
+    block = getattr(getattr(response, "prompt_feedback", None), "block_reason", None)
+    raise ValueError(f"Empty response from Gemini (finish_reason={finish}, block_reason={block})")
+
+
 async def generate_answer(
     question: str,
     system_instruction: str,
@@ -59,16 +87,15 @@ async def generate_answer(
     parts.append(f"Domanda:\n{question}")
 
     response = await _client.aio.models.generate_content(
-        model=GEMINI_MODEL,
+        model=GEMINI_ANSWER_MODEL,
         contents=[{"role": "user", "parts": [{"text": "\n\n".join(parts)}]}],
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
             tools=[types.Tool(google_search=types.GoogleSearch())],
+            http_options=types.HttpOptions(timeout=GEMINI_ANSWER_TIMEOUT_MS),
         ),
     )
-    text = getattr(response, "text", None)
-    if not text:
-        raise ValueError("Empty response from Gemini")
+    text = _response_text(response)
 
     sources = _extract_sources(response)
     if sources:
