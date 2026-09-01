@@ -50,13 +50,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_text(
         "Scrivimi un messaggio e ti rispondo, non è difficile.\n"
         "Nei gruppi, taggami o rispondi a un mio messaggio.\n"
-        "/chiedi <domanda> se ti serve una risposta vera (cerco pure sul web), /persona per cambiarmi il "
+        "/chiedi <domanda> se ti serve una risposta vera, /persona per cambiarmi il "
         "carattere, /psicoanalizza e /rissa per il resto."
     )
 
 
 async def chiedi_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Risposta utile (ma sempre da stronzo) a una domanda, con ricerca web di Gemini.
+    """Risposta utile (ma sempre da stronzo) a una domanda, via Gemini.
 
     Una tantum: non cambia la personalità attiva della chat.
     """
@@ -82,6 +82,13 @@ async def chiedi_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     try:
         answer = await generate_answer(question, ASSISTANT_INSTRUCTION, history)
+    except genai_errors.ClientError as exc:
+        logger.exception("Gemini answer call failed: %r", exc)
+        if getattr(exc, "code", None) == 429:
+            await placeholder.edit_text("Ho finito la quota di Gemini per ora. Riprova più tardi.")
+        else:
+            await placeholder.edit_text("Aspetta che sto cagando. Riprova tra poco.")
+        return
     except Exception as exc:
         logger.exception("Gemini answer call failed: %r", exc)
         await placeholder.edit_text("Aspetta che sto cagando. Riprova tra poco.")

@@ -4,8 +4,8 @@ from google.genai import types
 from bot.config import GEMINI_API_KEY, GEMINI_MODEL
 from bot.history import ChatMessage
 
-# Timeout massimo per una risposta di Gemini. Tarato su /chiedi, che fa girare la
-# ricerca web lato server ed è la chiamata più lenta.
+# Timeout massimo per una risposta di Gemini, con un po' di margine per /chiedi
+# che può generare risposte lunghe.
 _TIMEOUT_MS = 60000
 
 _client = genai.Client(
@@ -32,20 +32,6 @@ async def generate_reply(
     if not text:
         raise ValueError("Empty response from Gemini")
     return text
-
-
-def _extract_sources(response) -> list[str]:
-    """URL delle fonti citate dal grounding di Gemini, se la ricerca web è stata usata."""
-    try:
-        chunks = response.candidates[0].grounding_metadata.grounding_chunks or []
-    except (AttributeError, IndexError, TypeError):
-        return []
-    urls: list[str] = []
-    for chunk in chunks:
-        uri = getattr(getattr(chunk, "web", None), "uri", None)
-        if uri and uri not in urls:
-            urls.append(uri)
-    return urls[:5]
 
 
 def _response_text(response) -> str:
@@ -88,17 +74,9 @@ async def generate_answer(
     response = await _client.aio.models.generate_content(
         model=GEMINI_MODEL,
         contents=[{"role": "user", "parts": [{"text": "\n\n".join(parts)}]}],
-        config=types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            tools=[types.Tool(google_search=types.GoogleSearch())],
-        ),
+        config=types.GenerateContentConfig(system_instruction=system_instruction),
     )
-    text = _response_text(response)
-
-    sources = _extract_sources(response)
-    if sources:
-        text += "\n\nFonti:\n" + "\n".join(f"- {url}" for url in sources)
-    return text
+    return _response_text(response)
 
 
 async def generate_psychoanalysis(
